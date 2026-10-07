@@ -10,3 +10,6 @@ class AnnotationClassCountSerializer(serializers.Serializer):
     count = serializers.IntegerField(
         help_text="Number of LabeledShape annotations of this label in the task."
     )
+    percentage = serializers.FloatField(
+        help_text="This label's count as a percentage of all annotations in the task."
+    )

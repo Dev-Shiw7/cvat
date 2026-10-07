@@ -46,6 +46,11 @@ class AnnotationCountsViewSet(viewsets.ViewSet):
             OpenApiParameter(
                 "task_id", int, required=True, description="ID of the task to count annotations for."
             ),
+            OpenApiParameter(
+                "min_count", int, required=False,
+                description="Only return labels with at least this many annotations. "
+                "Useful for dropping long-tail classes from a crowded chart.",
+            ),
         ],
         responses={200: AnnotationClassCountSerializer(many=True)},
     )
@@ -58,6 +63,14 @@ class AnnotationCountsViewSet(viewsets.ViewSet):
             task_id = int(task_id)
         except ValueError:
             raise ValidationError("'task_id' must be an integer.")
+
+        min_count_param = request.query_params.get("min_count")
+        min_count = 0
+        if min_count_param is not None:
+            try:
+                min_count = int(min_count_param)
+            except ValueError:
+                raise ValidationError("'min_count' must be an integer.")
 
         try:
             task = Task.objects.get(id=task_id)
@@ -90,6 +103,18 @@ class AnnotationCountsViewSet(viewsets.ViewSet):
         for row in annotated:
             counts[row["label__name"]] = row["count"]
 
-        data = [{"label": name, "count": count} for name, count in counts.items()]
+        # Percentage share turns a raw tally into actual analytics: it shows
+        # at a glance how balanced the task's classes are (e.g. "person" is
+        # ~30% of this task's annotations, "hair drier" is under 0.1%).
+        total = sum(counts.values())
+        data = [
+            {
+                "label": name,
+                "count": count,
+                "percentage": round(count / total * 100, 2) if total else 0.0,
+            }
+            for name, count in counts.items()
+            if count >= min_count
+        ]
         serializer = AnnotationClassCountSerializer(data, many=True)
         return Response(serializer.data)

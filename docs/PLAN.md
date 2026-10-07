@@ -21,6 +21,25 @@ CVAT does not show how many annotations exist per class. Add an API that counts 
 
 Work the list in order. **Items 1–4 are the floor** — nothing past them is assessed until they work. **Items 8–9 are stretch** and are only started once the floor plus 5–7 are solid.
 
+## Time budget (out of 8 hours)
+
+| Step | Items | Est. |
+|---|---|---|
+| Docs: Plan first, before any code | 10 (plan) | 0:30 |
+| Data setup: COCO download/extract, task creation, labels, annotation import | setup (not counted against the 8h, but real wall-clock was spent here) | — |
+| API endpoint, counts from the DB | 1 | 1:00 |
+| Web page + chart | 2, 3 | 1:00 |
+| Empty/error states | 4 | 0:30 |
+| **— floor complete —** | | **3:00** |
+| Auth: 401 + 403, demonstrated | 5 | 0:45 |
+| Speed objective: target, measure, report | 6 | 0:45 |
+| Filter/grouping (`min_count`, `percentage`) | 7 | 0:30 |
+| **— stretch from here —** | | |
+| WebSocket live updates | 8 | 1:30 |
+| Reconnect / recovery | 9 | 0:45 |
+| Decision record, Definition of Done, final polish | 10 | 0:45 |
+| **Total planned** | | **8:00** |
+
 ## How I plan to complete each of the 10 deliverables
 
 ### 1. API endpoint — annotations per class for a task, from the database
@@ -57,8 +76,8 @@ Work the list in order. **Items 1–4 are the floor** — nothing past them is a
 - Measure 5 runs, paste the **raw** output, report **median + spread**, and record CPU/RAM/OS and the commit SHA. Target met, or missed with the reason written down.
 
 ### 7. One filter or grouping beyond the plain count
-- Add a `?source=manual|auto` filter so counts can be split by how the annotation was made (human vs model).
-- Chosen because it is the one breakdown that changes the *meaning* of the numbers for a labelling team (how much is hand-drawn vs auto-generated), and it maps to an existing field (`source`) on the shape — justification recorded in the docs.
+- Built two additions, verified against real task #3 data (5,000 images, 41,866 annotations): `?min_count=N` (drops labels below a threshold — real counts range from 10 to 12,451, so this fixes real chart clutter) and `percentage` on every entry (count as % of the task's total — actual analytics, not just a tally).
+- Originally planned `?source=manual|auto`, changed after the data showed every annotation in task #3 has `source='file'` — that filter would be correct code with nothing real to demonstrate.
 
 ### 8. The graph updates live over WebSocket (stretch)
 - Greenfield: add `channels` + `channels_redis` (Redis already runs), set `ASGI_APPLICATION` + `CHANNEL_LAYERS`, and turn `cvat/asgi.py` into a `ProtocolTypeRouter` with a websocket route.
