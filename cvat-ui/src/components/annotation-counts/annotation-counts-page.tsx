@@ -8,6 +8,7 @@ import { Row, Col } from 'antd/lib/grid';
 import Title from 'antd/lib/typography/Title';
 import Result from 'antd/lib/result';
 import Empty from 'antd/lib/empty';
+import Button from 'antd/lib/button';
 import notification from 'antd/lib/notification';
 import {
     Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend,
@@ -71,9 +72,7 @@ function AnnotationCountsPage(): JSX.Element {
                     status='error'
                     title='Could not load annotation counts'
                     subTitle={error.message}
-                    extra={(
-                        <a onClick={fetchCounts} role='button' tabIndex={0}>Retry</a>
-                    )}
+                    extra={<Button type='primary' onClick={fetchCounts}>Retry</Button>}
                 />
             </div>
         );
@@ -113,7 +112,13 @@ function AnnotationCountsPage(): JSX.Element {
                             }}
                         />
                     ) : (
-                        <Empty description='No annotations found for this task yet' />
+                        <Empty description={(
+                            <>
+                                <div>No annotations found for this task yet.</div>
+                                <div>Upload annotations to this task, then come back to see the counts.</div>
+                            </>
+                        )}
+                        />
                     )}
                 </Col>
             </Row>

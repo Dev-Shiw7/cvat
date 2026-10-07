@@ -92,3 +92,8 @@ To be written at the end if item 10 is reached: the approach taken, the approach
 ## Plan changes log
 
 Deviations from this plan are appended here with the reason, as they happen.
+
+- **Used all 5,000 val2017 images, not a small subset.** The Plan assumed a smaller sample for speed; in practice the machine handled the full set comfortably and importing the complete set avoided ambiguity about which classes would appear at all.
+- **COCO annotation upload required predefining all 80 task labels first.** CVAT's "Upload annotations" on an existing task does not auto-create labels from the dataset; it fails per-image with `Label 'X' is not registered for this task` until every COCO category exists on the task beforehand (added via the Raw label editor, each with an explicit `type` and `attributes` field — both required or the editor rejects the JSON).
+- **Verifying the backend required rebuilding Docker images, not just restarting containers.** An early verification approach (copying changed files into the already-running `cvat_server` container) was *not* durable: it's silently lost the moment that container restarts or is recreated, with no warning. Fixed by rebuilding the actual `cvat_server`/`cvat_ui` images via the `docker-compose.dev.yml` overlay (which adds the `build:` contexts missing from the base compose file) so changes persist in the image itself.
+- **Corrected the test plan for item 4's "failed request" case.** The new page's route lives inside CVAT's authenticated route switch, so testing it by logging out exercises CVAT's own router redirect, not this page's error handling. The valid test is an in-session request that the *backend* rejects (e.g. a nonexistent task id), which reaches the page's own fetch/catch logic.
