@@ -6,11 +6,12 @@ from django.db.models import Count
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from cvat.apps.engine.models import LabeledShape, Task
+from cvat.apps.engine.permissions import TaskPermission
 
 from .serializers import AnnotationClassCountSerializer
 
@@ -62,6 +63,16 @@ class AnnotationCountsViewSet(viewsets.ViewSet):
             task = Task.objects.get(id=task_id)
         except Task.DoesNotExist:
             raise NotFound(f"Task {task_id} does not exist.")
+
+        # Reuse CVAT's own task-view permission check -- the same call CVAT's
+        # serializers use (see engine/serializers.py) -- instead of defining
+        # a separate iam_permission_class/OPA resource for this endpoint.
+        # Note: unlike some CVAT endpoints that return 404 here to avoid
+        # revealing a task's existence, this endpoint deliberately returns
+        # 403 so "no login" (401) and "no access" (403) are distinguishable,
+        # per the assessment's requirement to demonstrate both.
+        if not TaskPermission.create_scope_view(request, task).check_access().allow:
+            raise PermissionDenied("You do not have access to this task.")
 
         # Every label defined for the task (via its project, if any) starts
         # at zero, so classes with no annotations still appear in the chart.
