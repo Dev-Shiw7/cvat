@@ -2732,6 +2732,24 @@ async function getQualityReports(
     return response.data.results;
 }
 
+interface AnnotationClassCount {
+    label: string;
+    count: number;
+}
+
+async function getAnnotationCounts(taskID: number): Promise<AnnotationClassCount[]> {
+    const { backendAPI } = config;
+
+    try {
+        const response = await Axios.get(`${backendAPI}/test/annotation-counts`, {
+            params: { task_id: taskID },
+        });
+        return response.data;
+    } catch (errorData) {
+        throw generateError(errorData);
+    }
+}
+
 export default Object.freeze({
     server: Object.freeze({
         about,
@@ -2912,6 +2930,7 @@ export default Object.freeze({
                 delete: deleteQualityRequirement,
             }),
         }),
+        annotationCounts: getAnnotationCounts,
     }),
 
     consensus: Object.freeze({

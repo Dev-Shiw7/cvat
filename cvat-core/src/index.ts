@@ -193,6 +193,7 @@ export default interface CVATCore {
         events: {
             export: (filter: AnalyticsEventsFilter) => Promise<string>;
         };
+        annotationCounts: (taskID: number) => Promise<{ label: string; count: number }[]>;
     };
     frames: {
         getMeta: (type: 'task' | 'job', id: number) => Promise<FramesMetaData>;
