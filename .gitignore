@@ -14,6 +14,8 @@
 /annotations_trainval2017.zip
 /annotations_trainval2017.zip.aria2
 /coco2017/
+/val2017/
+/annotations/
 
 # Ignore temporary files
 docker-compose.override.yml
