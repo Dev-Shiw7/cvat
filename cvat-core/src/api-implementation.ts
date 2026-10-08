@@ -547,9 +547,10 @@ export default function implementAPI(cvat: CVATCore): CVATCore {
     });
     implementationMixin(cvat.analytics.annotationCounts, async (
         taskID: Parameters<CVATCore['analytics']['annotationCounts']>[0],
+        minCount?: Parameters<CVATCore['analytics']['annotationCounts']>[1],
     ) => {
         checkFilter({ taskID }, { taskID: isInteger });
-        const counts = await serverProxy.analytics.annotationCounts(taskID);
+        const counts = await serverProxy.analytics.annotationCounts(taskID, minCount);
         return counts;
     });
     implementationMixin(

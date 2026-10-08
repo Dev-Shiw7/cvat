@@ -9,24 +9,41 @@ import Title from 'antd/lib/typography/Title';
 import Result from 'antd/lib/result';
 import Empty from 'antd/lib/empty';
 import Button from 'antd/lib/button';
+import Radio from 'antd/lib/radio';
 import notification from 'antd/lib/notification';
 import {
-    Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend,
+    Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend,
 } from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
 
 import { getCore } from 'cvat-core-wrapper';
 import CVATLoadingSpinner from 'components/common/loading-spinner';
 import GoBackButton from 'components/common/go-back-button';
+import './styles.scss';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
+
+// Distinct-ish colors cycled across however many labels are showing, so a
+// percentage slice is actually visually distinguishable from its neighbours.
+const SLICE_COLORS = [
+    '#1890ff', '#13c2c2', '#52c41a', '#faad14', '#f5222d',
+    '#722ed1', '#eb2f96', '#fa8c16', '#a0d911', '#2f54eb',
+];
 
 const core = getCore();
 
 interface AnnotationClassCount {
     label: string;
     count: number;
+    percentage: number;
 }
+
+const MIN_COUNT_OPTIONS = [
+    { label: 'All', value: 0 },
+    { label: '≥ 10', value: 10 },
+    { label: '≥ 50', value: 50 },
+    { label: '≥ 100', value: 100 },
+];
 
 function AnnotationCountsPage(): JSX.Element {
     const taskID = +useParams<{ tid: string }>().tid;
@@ -34,11 +51,16 @@ function AnnotationCountsPage(): JSX.Element {
     const [fetching, setFetching] = useState(true);
     const [error, setError] = useState<Error | null>(null);
     const [counts, setCounts] = useState<AnnotationClassCount[]>([]);
+    const [minCount, setMinCount] = useState(0);
+    const [metric, setMetric] = useState<'count' | 'percentage'>('count');
+
+    const minCountRef = useRef(minCount);
+    minCountRef.current = minCount;
 
     const fetchCounts = (): void => {
         setFetching(true);
         setError(null);
-        core.analytics.annotationCounts(taskID).then((data: AnnotationClassCount[]) => {
+        core.analytics.annotationCounts(taskID, minCountRef.current).then((data: AnnotationClassCount[]) => {
             setCounts(data);
         }).catch((fetchError: Error) => {
             setError(fetchError);
@@ -57,28 +79,66 @@ function AnnotationCountsPage(): JSX.Element {
     useEffect(() => {
         fetchCounts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [taskID]);
+    }, [taskID, minCount]);
 
     // Item 8: live updates over WebSocket. The socket only ever carries a
     // "something changed, go re-fetch" ping (see consumers.py) -- the REST
     // endpoint stays the single source of truth for the actual counts, so
     // there's no client-side state to keep in sync by hand.
+    //
+    // Item 9: the socket can drop (server restart, network blip) without the
+    // page getting any useful help from onmessage, so reconnect is handled
+    // here with exponential backoff, and a resync (re-fetch) on every
+    // reconnect catches up on anything missed while disconnected.
     useEffect(() => {
         if (!Number.isInteger(taskID)) {
             return undefined;
         }
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const socket = new WebSocket(
-            `${protocol}//${window.location.host}/ws/test/annotation-counts/${taskID}/`,
-        );
+        let cancelled = false;
+        let socket: WebSocket | null = null;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let attempt = 0;
 
-        socket.onmessage = () => {
-            fetchCountsRef.current();
+        const connect = (): void => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(
+                `${protocol}//${window.location.host}/ws/test/annotation-counts/${taskID}/`,
+            );
+
+            socket.onopen = () => {
+                if (attempt > 0) {
+                    // Missed whatever changed while disconnected -- resync.
+                    fetchCountsRef.current();
+                }
+                attempt = 0;
+            };
+
+            socket.onmessage = () => {
+                fetchCountsRef.current();
+            };
+
+            socket.onclose = () => {
+                if (cancelled) {
+                    return;
+                }
+                const delay = Math.min(1000 * 2 ** attempt, 30000);
+                attempt += 1;
+                reconnectTimer = setTimeout(connect, delay);
+            };
         };
 
+        connect();
+
         return () => {
-            socket.close();
+            cancelled = true;
+            if (reconnectTimer !== null) {
+                clearTimeout(reconnectTimer);
+            }
+            if (socket !== null) {
+                socket.onclose = null;
+                socket.close();
+            }
         };
     }, [taskID]);
 
@@ -121,23 +181,93 @@ function AnnotationCountsPage(): JSX.Element {
             <Row justify='center'>
                 <Col span={22} xl={18} xxl={14}>
                     <Title level={3}>{`Annotation counts for task #${taskID}`}</Title>
-                    {hasData ? (
-                        <Bar
-                            data={{
-                                labels: counts.map((item) => item.label),
-                                datasets: [{
-                                    label: 'Annotations',
-                                    data: counts.map((item) => item.count),
-                                    backgroundColor: '#1890ff',
-                                }],
-                            }}
-                            options={{
-                                responsive: true,
-                                plugins: { legend: { display: false } },
-                                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-                            }}
-                        />
-                    ) : (
+                    <Row justify='space-between' className='cvat-annotation-counts-controls'>
+                        <Col>
+                            <Radio.Group
+                                options={MIN_COUNT_OPTIONS}
+                                optionType='button'
+                                buttonStyle='solid'
+                                value={minCount}
+                                onChange={(event) => setMinCount(event.target.value)}
+                            />
+                        </Col>
+                        <Col>
+                            <Radio.Group
+                                options={[
+                                    { label: 'Count', value: 'count' },
+                                    { label: 'Percentage', value: 'percentage' },
+                                ]}
+                                optionType='button'
+                                buttonStyle='solid'
+                                value={metric}
+                                onChange={(event) => setMetric(event.target.value)}
+                            />
+                        </Col>
+                    </Row>
+                    {hasData && metric === 'count' && (
+                        <div className='cvat-annotation-counts-chart-wrapper'>
+                            <Bar
+                                data={{
+                                    labels: counts.map((item) => item.label),
+                                    datasets: [{
+                                        label: 'Annotations',
+                                        data: counts.map((item) => item.count),
+                                        backgroundColor: '#1890ff',
+                                    }],
+                                }}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: { display: false },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: (context) => {
+                                                    const item = counts[context.dataIndex];
+                                                    return `${item.count} annotations (${item.percentage}%)`;
+                                                },
+                                            },
+                                        },
+                                    },
+                                    scales: {
+                                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                                    },
+                                }}
+                            />
+                        </div>
+                    )}
+                    {hasData && metric === 'percentage' && (
+                        <div className='cvat-annotation-counts-chart-wrapper'>
+                            <Doughnut
+                                data={{
+                                    labels: counts.map((item) => item.label),
+                                    datasets: [{
+                                        label: 'Percentage of task',
+                                        data: counts.map((item) => item.percentage),
+                                        backgroundColor: counts.map(
+                                            (_, index) => SLICE_COLORS[index % SLICE_COLORS.length],
+                                        ),
+                                    }],
+                                }}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: { position: 'right' },
+                                        tooltip: {
+                                            callbacks: {
+                                                label: (context) => {
+                                                    const item = counts[context.dataIndex];
+                                                    return `${item.label}: ${item.count} annotations (${item.percentage}%)`;
+                                                },
+                                            },
+                                        },
+                                    },
+                                }}
+                            />
+                        </div>
+                    )}
+                    {!hasData && (
                         <Empty description={(
                             <>
                                 <div>No annotations found for this task yet.</div>

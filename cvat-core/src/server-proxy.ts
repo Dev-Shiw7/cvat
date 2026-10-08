@@ -2735,15 +2735,18 @@ async function getQualityReports(
 interface AnnotationClassCount {
     label: string;
     count: number;
+    percentage: number;
 }
 
-async function getAnnotationCounts(taskID: number): Promise<AnnotationClassCount[]> {
+async function getAnnotationCounts(taskID: number, minCount?: number): Promise<AnnotationClassCount[]> {
     const { backendAPI } = config;
 
     try {
-        const response = await Axios.get(`${backendAPI}/test/annotation-counts`, {
-            params: { task_id: taskID },
-        });
+        const params: { task_id: number; min_count?: number } = { task_id: taskID };
+        if (typeof minCount === 'number') {
+            params.min_count = minCount;
+        }
+        const response = await Axios.get(`${backendAPI}/test/annotation-counts`, { params });
         return response.data;
     } catch (errorData) {
         throw generateError(errorData);
