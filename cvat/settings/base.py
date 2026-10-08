@@ -117,6 +117,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django_rq",
     "django_sendfile",
+    "channels",
     "dj_rest_auth",
     "dj_rest_auth.registration",
     "dj_pagination",
@@ -148,6 +149,7 @@ INSTALLED_APPS = [
     "cvat.apps.consensus",
     "cvat.apps.access_tokens",
     "cvat.apps.growth",
+    "cvat.apps.test",
 ]
 
 AUTH_USER_MODEL = "iam.User"
@@ -349,6 +351,7 @@ redis_inmem_password = os.getenv("CVAT_REDIS_INMEM_PASSWORD", "")
 class REDIS_INMEM_DATABASES(IntEnum):
     RQ = 0
     CACHE = 1
+    CHANNELS = 2
 
 
 REDIS_INMEM_SETTINGS = {
@@ -361,6 +364,43 @@ REDIS_INMEM_SETTINGS = {
         # for blocking operations such as BLPOP. Fixed upstream in RQ 2.0:
         # https://github.com/rq/rq/pull/2120
         "socket_timeout": None,
+    },
+}
+
+# Django Channels: lets the "annotation counts update live" feature (item 8 of
+# the assessment) broadcast "this task changed" to connected websocket clients.
+# Reuses the already-running Redis instance (a separate DB index, so it never
+# collides with the RQ queues or the cache above), rather than standing up a
+# new piece of infrastructure.
+ASGI_APPLICATION = "cvat.asgi.application"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            # A plain kwargs dict with no "address" key hits channels_redis's
+            # final fallback (redis.asyncio.ConnectionPool(**host)) rather
+            # than its from_url() path, which expects a URL string, not a
+            # (host, port) tuple.
+            "hosts": [{
+                "host": redis_inmem_host,
+                "port": int(redis_inmem_port),
+                # redis.asyncio's connection handshake chokes on an IntEnum
+                # value here (even though it's int-compatible everywhere
+                # else) -- cast to a plain int explicitly.
+                "db": int(REDIS_INMEM_DATABASES.CHANNELS),
+                "password": redis_inmem_password or None,
+                # channels_redis's internal BZPOPMIN uses a 5s server-side
+                # blocking timeout and expects a clean None back when it
+                # elapses. redis-py 8.x's client-side socket_timeout
+                # defaults to something at or below that, so the client
+                # cuts the read off first and raises TimeoutError instead
+                # -- which channels_redis does not catch, silently killing
+                # every websocket consumer a few seconds after it connects.
+                # Giving the socket more patience than the blocking command
+                # lets the server's own timeout win.
+                "socket_timeout": 10,
+            }],
+        },
     },
 }
 

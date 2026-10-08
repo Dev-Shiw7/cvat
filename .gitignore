@@ -8,6 +8,15 @@
 /logs
 /profiles
 
+# Assessment: COCO sample dataset downloads (never commit — data, not source)
+/val2017.zip
+/val2017.zip.aria2
+/annotations_trainval2017.zip
+/annotations_trainval2017.zip.aria2
+/coco2017/
+/val2017/
+/annotations/
+
 # Ignore temporary files
 docker-compose.override.yml
 __pycache__

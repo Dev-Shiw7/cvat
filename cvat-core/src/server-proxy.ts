@@ -2732,6 +2732,27 @@ async function getQualityReports(
     return response.data.results;
 }
 
+interface AnnotationClassCount {
+    label: string;
+    count: number;
+    percentage: number;
+}
+
+async function getAnnotationCounts(taskID: number, minCount?: number): Promise<AnnotationClassCount[]> {
+    const { backendAPI } = config;
+
+    try {
+        const params: { task_id: number; min_count?: number } = { task_id: taskID };
+        if (typeof minCount === 'number') {
+            params.min_count = minCount;
+        }
+        const response = await Axios.get(`${backendAPI}/test/annotation-counts`, { params });
+        return response.data;
+    } catch (errorData) {
+        throw generateError(errorData);
+    }
+}
+
 export default Object.freeze({
     server: Object.freeze({
         about,
@@ -2912,6 +2933,7 @@ export default Object.freeze({
                 delete: deleteQualityRequirement,
             }),
         }),
+        annotationCounts: getAnnotationCounts,
     }),
 
     consensus: Object.freeze({

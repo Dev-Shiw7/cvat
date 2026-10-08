@@ -115,6 +115,12 @@ export default function TaskActionsItems(menuItemsData: MenuItemsData, taskMenuP
         disabled: isDisabled('quality_control') || isQualityControlDisabled,
     }, 70]);
 
+    menuItems.push([{
+        key: 'annotation_counts',
+        label: withCount('Annotation counts', 'annotation_counts', `/tasks/${taskId}/annotation-counts`),
+        disabled: isDisabled('annotation_counts'),
+    }, 72]);
+
     if (isConsensusEnabled) {
         menuItems.push([{
             key: 'consensus_management',

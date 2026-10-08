@@ -454,6 +454,12 @@ function build(): CVATCore {
                     },
                 },
             },
+            async annotationCounts(taskID, minCount) {
+                const result = await PluginRegistry.apiWrapper(
+                    cvat.analytics.annotationCounts, taskID, minCount,
+                );
+                return result;
+            },
         },
         requests: {
             async list() {
