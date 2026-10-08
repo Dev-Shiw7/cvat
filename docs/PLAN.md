@@ -11,7 +11,7 @@
 | Backend home | new Django app `cvat/apps/test` |
 | CVAT commit cloned | `28f5bffaf1b66b81c1e908d3ae626047a54279b0` |
 | Machine | Apple M5, 10 cores, 16 GB RAM, macOS 26.2 (arm64); Docker: 10 CPUs, ~7.75 GB |
-| Dataset | COCO 2017 val, imported as COCO 1.0. Image count used: _TBD — recorded after import_ |
+| Dataset | COCO 2017 val, imported as COCO 1.0. Image count used: **5,000** (the full val2017 set) |
 
 ## Goal
 
@@ -112,7 +112,11 @@ Work the list in order. **Items 1–4 are the floor** — nothing past them is a
 
 ## Decision record (item 10)
 
-To be written at the end if item 10 is reached: the approach taken, the approach rejected, and what rejecting it cost. Preliminary decisions are captured per item above; this section will consolidate the final one.
+**Approach taken:** real push-based live updates for item 8 — Django Channels + a Redis-backed channel layer, a dedicated ASGI consumer, and a broadcast hook on every annotation write path.
+
+**Approach rejected:** short-interval polling from the page (re-run the REST GET every few seconds) instead of a WebSocket.
+
+**What rejecting polling cost:** polling would have been a few lines in the page component and nothing else — no new dependencies, no ASGI routing, no consumer, no broadcast hooks threaded through five write-path functions in `dataset_manager/task.py`. Choosing the real-time route instead cost most of a build session: adding and debugging `channels`/`channels-redis` as new dependencies, three distinct wiring bugs before it worked at all (a bad `CHANNEL_LAYERS` host config, an `IntEnum` silently breaking the Redis handshake, a missing transitive dependency), and then a genuine production-grade bug afterward — `channels-redis` and the already-pinned `redis-py` disagreeing about blocking-read timeouts, silently killing every live connection a few seconds after it opened, only caught by replaying the real network path instead of trusting an in-process test. What polling would never have cost: none of that, but also none of what it bought — true instant updates with no polling delay and no wasted requests when nothing has changed, and a real (not trivial) demonstration of both stretch items 8 and 9, since a reconnect story only means something when there's a persistent connection to lose in the first place.
 
 ## Plan changes log
 
