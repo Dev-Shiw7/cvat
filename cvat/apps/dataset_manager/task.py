@@ -5,6 +5,7 @@
 
 import io
 import itertools
+import logging
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Generator, Sequence
 from contextlib import nullcontext
@@ -34,6 +35,37 @@ from cvat.apps.engine.log import DatasetLogManager
 from cvat.apps.engine.plugins import plugin_decorator
 from cvat.apps.engine.utils import av_scan_paths, take_by
 from cvat.apps.events.handlers import handle_annotations_change
+
+
+def _broadcast_annotation_counts_changed(task_id: int) -> None:
+    """
+    Item 8: tells any connected annotation-counts websocket clients that this
+    task's annotations changed, so they know to re-fetch the real counts from
+    the REST endpoint (cvat.apps.test.views). Scheduled with
+    transaction.on_commit so a rolled-back write never triggers a false
+    notification. Broadcasting is a convenience, not the source of truth --
+    any failure here (e.g. the channel layer being briefly unavailable) is
+    swallowed rather than allowed to break the actual annotation write.
+    """
+
+    def _send():
+        try:
+            from asgiref.sync import async_to_sync
+            from channels.layers import get_channel_layer
+
+            channel_layer = get_channel_layer()
+            if channel_layer is None:
+                return
+            async_to_sync(channel_layer.group_send)(
+                f"task_{task_id}_annotation_counts",
+                {"type": "counts.changed"},
+            )
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to broadcast annotation count change for task %s", task_id
+            )
+
+    transaction.on_commit(_send)
 from cvat.apps.profiler import silk_profile
 from cvat.utils import django_database as db_utils
 
@@ -1283,6 +1315,7 @@ def get_job_data(pk, *, streaming: bool = False):
 def put_job_data(pk, data: AnnotationIR | dict, *, db_job: models.Job | None = None):
     annotation = JobAnnotation(pk, db_job=db_job)
     annotation.put(data)
+    _broadcast_annotation_counts_changed(annotation.db_job.segment.task_id)
 
     return annotation.data
 
@@ -1299,8 +1332,11 @@ def patch_job_data(
     elif action == PatchAction.UPDATE:
         annotation.update(data)
     elif action == PatchAction.DELETE:
-        return annotation.delete(data)
+        result = annotation.delete(data)
+        _broadcast_annotation_counts_changed(annotation.db_job.segment.task_id)
+        return result
 
+    _broadcast_annotation_counts_changed(annotation.db_job.segment.task_id)
     return annotation.data
 
 
@@ -1309,6 +1345,7 @@ def patch_job_data(
 def delete_job_data(pk, *, db_job: models.Job | None = None):
     annotation = JobAnnotation(pk, db_job=db_job)
     annotation.delete()
+    _broadcast_annotation_counts_changed(annotation.db_job.segment.task_id)
 
 
 @db_utils.transaction_with_repeatable_read()
@@ -1345,6 +1382,7 @@ def get_task_data(pk):
 def put_task_data(pk, data):
     annotation = TaskAnnotation(pk)
     annotation.put(data)
+    _broadcast_annotation_counts_changed(pk)
 
     return annotation.data
 
@@ -1360,6 +1398,7 @@ def patch_task_data(pk, data, action):
     elif action == PatchAction.DELETE:
         annotation.delete(data)
 
+    _broadcast_annotation_counts_changed(pk)
     return annotation.data
 
 

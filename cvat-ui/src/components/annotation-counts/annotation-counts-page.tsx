@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { Row, Col } from 'antd/lib/grid';
 import Title from 'antd/lib/typography/Title';
@@ -51,9 +51,35 @@ function AnnotationCountsPage(): JSX.Element {
         });
     };
 
+    const fetchCountsRef = useRef(fetchCounts);
+    fetchCountsRef.current = fetchCounts;
+
     useEffect(() => {
         fetchCounts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [taskID]);
+
+    // Item 8: live updates over WebSocket. The socket only ever carries a
+    // "something changed, go re-fetch" ping (see consumers.py) -- the REST
+    // endpoint stays the single source of truth for the actual counts, so
+    // there's no client-side state to keep in sync by hand.
+    useEffect(() => {
+        if (!Number.isInteger(taskID)) {
+            return undefined;
+        }
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(
+            `${protocol}//${window.location.host}/ws/test/annotation-counts/${taskID}/`,
+        );
+
+        socket.onmessage = () => {
+            fetchCountsRef.current();
+        };
+
+        return () => {
+            socket.close();
+        };
     }, [taskID]);
 
     const backNavigation = (
