@@ -389,6 +389,16 @@ CHANNEL_LAYERS = {
                 # else) -- cast to a plain int explicitly.
                 "db": int(REDIS_INMEM_DATABASES.CHANNELS),
                 "password": redis_inmem_password or None,
+                # channels_redis's internal BZPOPMIN uses a 5s server-side
+                # blocking timeout and expects a clean None back when it
+                # elapses. redis-py 8.x's client-side socket_timeout
+                # defaults to something at or below that, so the client
+                # cuts the read off first and raises TimeoutError instead
+                # -- which channels_redis does not catch, silently killing
+                # every websocket consumer a few seconds after it connects.
+                # Giving the socket more patience than the blocking command
+                # lets the server's own timeout win.
+                "socket_timeout": 10,
             }],
         },
     },
